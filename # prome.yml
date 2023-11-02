@@ -1,0 +1,487 @@
+# 全局配置
+global:
+  scrape_interval:     15s   # 多久 收集 一次数据
+  evaluation_interval: 30s   # 多久评估一次 规则
+  scrape_timeout:      10s   # 每次 收集数据的 超时时间
+
+scrape_configs:
+
+  - job_name: 'prometheus' #任务名称
+    static_configs:#各个实例的信息
+      - targets: ['localhost:9090'] #目标地址，端口为9090
+
+  - job_name: 'node' #任务名称
+    scrape_interval: '5s' #该任务独立的抓取间隔
+    static_configs:#各个实例的信息
+      - targets: ['localhost:9100'] #目标地址，端口为9100
+
+  - job_name: 'blackbox' #任务名称
+    metrics_path: /probe #指定请求路径
+    params:
+      module: [http_2xx] #设置参数
+    static_configs:#各个实例的信息
+      - targets: ['http://prometheus.io'] #目标地址
+
+  - job_name: 'consul'#任务名称
+    consul_sd_configs: #consul_sd_configs 是服务发现的配置，下面是使用 consul 来作服务发现的配置
+      - server: 'localhost:8500' #consul服务的地址
+
+  - job_name: 'mysql'#任务名称
+    mysql_sd_configs: #mysql_sd_configs 是服务发现的配置，使用mysql 来作服务发现的配置
+      - user: 'user'
+        password: 'password'
+        host: 'localhost'
+        port: 3306
+        meta_label_prefix: 'prefix_'#所有的已发现标签将会以设定的前缀开始。
+
+以上是 Prometheus 的全局配置样例，不同 job_name 对应不同任务，每个任务可以设置独立的抓取间隔，请求路径，请求参数等。同时可以对任务进行服务发现的配置。
+
+  
+  # 当Prometheus和外部系统(联邦, 远程存储, Alertmanager)通信的时候，添加标签到任意的时间序列或者报警   多环境下添加其他的标签来方便识别
+  external_labels:      
+    monitor: codelab
+    foo:     bar
+
+    scrape_configs:
+  - job_name: 'test'
+    static_configs:
+    - targets: ['localhost:1234']
+      labels:
+        group: 'production'
+        mylabel: 'myvalue'
+  
+  在这个例子中，Prometheus将会从`localhost:1234`这个地址（你可以将其替换为你的应用服务器地址）抓取metrics，并为这些抓取到的metrics添加`group`和`mylabel`两个标签。而这两个标签的值分别为`production`和`myvalue`。
+
+你可以根据你的需要设定更多的标签或更改这些标签的名称和值。
+
+相对的，`external_labels`在Prometheus配置的全局范围内定义，例如：
+
+global:
+  scrape_interval:     15s 
+  evaluation_interval: 15s 
+  external_labels:
+      monitor: 'codelab'
+      foo: 'bar'
+
+# 规则文件, 可以使用通配符
+_files:
+- "first.s"              指定相对的规则文件  
+- "my/*.rules"               有关my*.rules的文件都会先执行first.rules
+
+规则指定
+1. **安全策略**：比如一些防火墙或安全控制系统，可能需要配置哪些IP地址可以访问，哪些端口可以开放等。
+
+2. **过滤规则**：例如在Email系统中，可能会设置一些规则来过滤垃圾邮件，比如包含某些关键字的邮件，或者来自某个特定的邮箱地址的邮件。
+
+3. **日志分析**：在对系统日志进行分析的时候，规则文件中可能配置了一些指标，例如如果错误日志的数量超过一定的限度，就发出警告。
+
+4. **数据校验**：在处理用户输入或者其他的数据源的时候，可能需要配置一些格式校验的规则，例如一个日期字段必须符合YYYY-MM-DD的格式。
+
+5. **网络流量监控**：可能会设置一些规则来捕捉特定的网络行为，如对某个特定端口的访问，或者数据包的大小超过一定阈值等。 
+# 远程写入功能相关的设置
+remote_write:      这是一个功能配置，允许Prometheus将接收的样本数据发送到远程的数据库中进行存储。
+  - url: http://remote1/push     这是配置Prometheus将数据推送到的第一个远程地址。
+    write_relabel_configs:            由于`action`设置为`drop`，它们将被丢弃，不被推送到远程存储中。所以remote1不被推送任何信息   remote2推送有关除了标签为"__name__"且值以"expensive"开头）的所有信息
+        - source_labels: [__name__]       
+      regex:         expensive.*     
+      action:        drop                   这是一个动作配置，表示匹配到满足上述条件  （标签为"__name__"且值以"expensive"开头）的样本数据将被丢弃，不会被推送到远程存储。 
+  - url: http://remote2/push                
+  
+# 远程读取相关功能的设置
+remote_read:
+  - url: http://remote1/read
+    read_recent: true
+  - url: http://remote3/read
+    read_recent: false
+    required_matchers:           全局条件 当job: special  remote1和remote3才能被读取使用
+      job: special
+  
+# 收集数据 配置 列表
+scrape_configs:
+- job_name: prometheus  # 必须配置, 自动附加的job labels, 必须唯一
+   
+  honor_labels: true   # 标签冲突, true 为以抓取的数据为准 并 忽略 服务器中的, false 为 通过重命名来解决冲突
+  # scrape_interval is defined by the configured global (15s).
+  # scrape_timeout is defined by the global default (10s).
+  
+    honor_labels 是指标签冲突 比如 job=node 还有一个job=name 那么就会有冲突  如果为true 标签冲突时采用抓取的数据覆盖server中的数据；如果为false，通过重命名来解决冲突
+  metrics_path:    
+  # scheme defaults to 'http'.
+  
+  
+  # 文件服务发现配置 列表
+  file_sd_configs:
+    - files:  # 从这些文件中提取目标  定义了需要提取目标的文件路径
+      - foo/*.slow.json
+      - foo/*.slow.yml
+      - single/file.yml
+      refresh_interval: 10m  # 刷新文件的 时间间隔 为10m
+    - files:                  #  对于下面的`-files:`与`-bar/*.yaml`，它表示会从`bar/`目录下所有以`.yaml`结尾的文件中提取信息，这是另一组要提取的目标。
+      - bar/*.yaml         
+   
+   这种类型的配置文件被用于不同的场景，如数据导出/
+   
+   - job_name: 'node'           
+    file_sd_configs:                          是告诉Prometheus去哪里找到目标服务，然后进行抓取
+    - refresh_interval: 30s                   设置了每隔30秒刷新一次这些文件
+      files:                                   
+      - "/usr/local/prometheus/sd_config/node*.yml"
+  
+  # 使用job名作为label的 静态配置目录 的 列表
+  static_configs:                                            静态获取度量的标准目标
+  - targets: ['localhost:9090', 'localhost:9191']            目标
+    labels:
+      my:   label                                            标签
+      your: label
+  
+  
+  # 目标节点 重新打标签 的配置 列表.  重新标记是一个功能强大的工具，可以在抓取目标之前动态重写目标的标签集。 可以配置多个，按照先后顺序应用
+  relabel_configs:                       允许你在数据进prometheus之前修改标签，改变已有的标签，添加新的标签，或删除不需要的标签。
+  - source_labels: [job, __meta_dns_name]   #更改的源标签
+    regex:         (.*)some-[regex]  #更改源标值
+    target_label:  job       # 更改现有的标签
+    replacement:   foo-${1}  # 替换成现有标签值
+   
+    举例来说，如果一个元标签（__meta_dns_name）值是“some-xyz”，那么它就会被更改为 'foo-xyz'，并且这个新的标签值会被写入到'job'标签中。
+    
+    # action defaults to 'replace'
+  - source_labels: [abc]  # 将abc标签的内容复制到cde标签中
+    target_label:  cde
+  - replacement:   static
+    target_label:  abc
+  - regex:
+    replacement:   static
+    target_label:  abc
+  
+  在这个例子里，我们把源标签 "abc" 的内容复制到新标签名为 "cde" 中。同时，把 "abc" 标签的值更替为 "static"。下面两条配置的作用是，
+  如果没有匹配任何正则表达式，则把 "abc" 的标签值设为 "static"
+  bearer_token_file: valid_token_file   表示如果你的目标服务需要身份验证，你可以在这里提供token文件
+  
+  
+- job_name: service-x
+  包含 "job_name: service-x" 这样的配置会对名为 "service-x" 的任务进行这种标签重新标记。
+
+  # HTTP basic 认证信息
+  basic_auth:
+    username: admin_name
+    password: "multiline\nmysecret\ntest"
+  
+  scrape_interval: 50s  # 对于该job, 多久收集一次数据
+  scrape_timeout:  5s
+  
+  sample_limit: 1000  # 每次 收集 样本数据的限制. 0 为不限制 不超过1000次
+  
+  metrics_path: /my_path  # 从目标 获取数据的 HTTP 路径
+  scheme: https  # 配置用于请求的协议方案
+  
+  
+  # DNS 服务发现 配置列表
+  dns_sd_configs:
+  - refresh_interval: 15s  每15s进行一次服务刷新
+    names:  # 要查询的DNS域名列表
+    - first.dns.address.domain.com
+    - second.dns.address.domain.com
+  - names:
+    - first.dns.address.domain.com            默认刷新30s
+    # refresh_interval defaults to 30s.
+  
+  
+  # 目标节点 重新打标签 的配置 列表
+  relabel_configs:
+  - source_labels: [job]
+    regex:         (.*)some-[regex]
+    action:        drop
+  - source_labels: [__address__]
+    modulus:       8
+    target_label:  __tmp_hash
+    action:        hashmod
+  - source_labels: [__tmp_hash]
+    regex:         1
+    action:        keep
+  - action:        labelmap
+    regex:         1
+  - action:        labeldrop
+    regex:         d
+  - action:        labelkeep
+    regex:         k
+  
+  这是一个配置列表，用于重新标记目标节点。具体操作如下：
+
+- 将源标签为[job]的标签值，如果符合(.*)some-[regex]的正则规则则将其丢弃（drop）。
+
+- 将源标签为[__address__]的标签值进行Hash取余操作，余数范围为0-7（因为modulus为8），将取余结果作为新的标签__tmp_hash的值。
+
+- 选取__tmp_hash的标签值为1的进行保留（keep），其余的丢弃。
+
+- 对所有的标签执行标签映射（labelmap）。例如，如果regex为 1，那么所有含有 1 的标签将被修改。
+
+- 删除满足regex为d的所有标签（labeldrop）。换句话说，所有含有d的标签都会被删除。
+
+- 只保留满足regex为k的所有标签（labelkeep）。换句话说，只保留含有k的标签，其余的都会被删除。
+
+注意，所有的操作都是按顺序执行的，也就是说前面的操作可能会影响后面操作的结果。
+  
+  # metric 重新打标签的 配置列表
+  metric_relabel_configs:
+  - source_labels: [__name__]
+    regex:         expensive_metric.*
+    action:        drop
+  
+  
+- job_name: service-y
+- `source_labels`：这是一个用于匹配的标签名列表。在这个列表中的所有标签都将与 `regex` 进行匹配。在这个例子中，只有一个标签 `__name__`。
+- `regex`：这是一个正则表达式，用于匹配 `source_labels` 中的标签值。在这个例子中，它匹配所有以 `expensive_metric` 开头的标签值。
+- `action`：这是一个操作，决定在匹配成功后应该做什么。 可能的值有：
+  - `replace`：用 `replacement` 替换 `target_label` 的值。
+  - `keep`：只保留匹配的时间序列，其它的删除。
+  - `drop`：删除匹配的时间序列，其它的保留。
+  在这个例子中，操作是 `drop`，因此，所有匹配的时间序列都将被删除。
+- `replacement` 和 `target_label`：这两个关键字只在 `action` 是 `replace` 时使用，用于指定替换的新值和目标标签。在这个例子中，没有使用这两个关键字。
+  
+  # consul 服务发现 配置列表
+  consul_sd_configs:
+  - server: 'localhost:1234'  # consul API 地址
+    token: mysecret    是Consul的ACL token，用于API请求认证
+    services: ['nginx', 'cache', 'mysql']  # 被检索目标的 服务 列表. 如果不定义那么 所有 服务 都会被 收集
+    scheme: https   用于与Consul服务器通信的协议（默认为http）。如果设置为https，就需要为TLS配置提供更多的详细信息。
+    tls_config:      TLS连接的配置
+      ca_file: valid_ca_file     用于用户证书验证的根证书CA文件的路径。
+      cert_file: valid_cert_file     客户端证书文件的路径，用于TLS连接
+      key_file:  valid_key_file
+      insecure_skip_verify: false     是否忽略服务端证书错误，如未知的证书颁发机构或过期的证书，默认为false，即不忽略。如果设置为true，将不会对服务端的证书进行验证。
+  
+  relabel_configs:
+  - source_labels: [__meta_sd_consul_tags]
+    separator:     ','
+    regex:         label:([^=]+)=([^,]+)
+    target_label:  ${1}
+    replacement:   ${2}    将匹配到的第二部分（在这里是'值'）用作新的标签值
+  
+- job_name: service-z     这个配置设置的是这个relabel配置将应用于哪个job。在这种情况下，它将应用于名为'service-z'的job
+  
+  # 收集 数据的 TLS 设置
+  tls_config:
+    cert_file: valid_cert_file
+    key_file: valid_key_file
+  
+  bearer_token: mysecret
+  
+- job_name: service-kubernetes
+  
+  # kubernetes 服务 发现 列表
+  kubernetes_sd_configs:
+  - role: endpoints   # 必须写, 必须是endpoints, service, pod, node, 或者 ingress
+    api_server: 'https://localhost:1234'
+  
+    basic_auth:  # HTTP basic 认证信息
+      username: 'myusername'   用户名字段
+      password: 'mysecret'     密码字段
+  
+- job_name: service-kubernetes-namespaces
+  
+  kubernetes_sd_configs:
+  - role: endpoints  # 应该被发现的 kubernetes 对象 实体
+    api_server: 'https://localhost:1234'  # API Server的地址
+    namespaces:  # 可选的命名空间发现, 如果省略 那么所有的命名空间都会被使用
+      names:
+        - default
+  
+- job_name: service-marathon
+  # Marathon 服务发现 列表
+  marathon_sd_configs:         配置Marathon服务发现，指定需要连接的Marathon的服务器，以及进行安全连接所需要的证书和秘钥文件。
+  - servers:
+    - 'https://marathon.example.com:443'
+  
+    tls_config:
+      cert_file: valid_cert_file     
+      key_file: valid_key_file
+  
+- job_name: service-ec2
+  ec2_sd_configs:          配置EC2服务发现，需设置相应的区域，AWS的access key和secret key，以及身份验证所需的profile。
+    - region: us-east-1
+      access_key: access
+      secret_key: mysecret
+      profile: profile
+  
+- job_name: service-azure
+  azure_sd_configs:                 配置Azure服务发现，需要配置订阅ID，租户ID，客户ID和访问Azure服务所需的客户机密钥，以及服务的端口。
+    - subscription_id: 11AAAA11-A11A-111A-A111-1111A1111A11
+      tenant_id: BBBB222B-B2B2-2B22-B222-2BB2222BB2B2
+      client_id: 333333CC-3C33-3333-CCC3-33C3CCCCC33C
+      client_secret: mysecret
+      port: 9100
+  
+- job_name: service-nerve
+  nerve_sd_configs:        Nerve服务发现，设置Nerve的服务器和路径
+    - servers:
+      - localhost
+      paths:
+      - /monitoring
+  
+- job_name: 0123service-xxx
+  metrics_path: /metric              job_name为0123service-xxx和測試，都是静态配置服务发现，直接指定服务的地址和端口，以及获取指标的路径。
+  static_configs:
+    - targets:
+      - localhost:9090
+  
+- job_name: 測試
+  metrics_path: /metrics
+  static_configs:
+    - targets:
+      - localhost:9090
+  
+- job_name: service-triton             
+  triton_sd_configs:                  triton_sd_configs部分是用于配置Triton服务发现，需要配置账户，DNS后缀，端点，端口，刷新间隔时间，版本和进行安全连接所需要的证书和秘钥文件。
+  - account: 'testAccount'
+    dns_suffix: 'triton.example.com'
+    endpoint: 'triton.example.com'
+    port: 9163
+    refresh_interval: 1m
+    version: 1
+    tls_config:
+      cert_file: testdata/valid_cert_file
+      key_file: testdata/valid_key_file
+  
+# Alertmanager相关的配置
+alerting:                         alerting 部分的设置
+  alertmanagers:                       定义了用于处理alerts的alertmanager的集群信息
+  - scheme: https                    配置是定义Alertmanager的scheme，这里设置为https，表示Prometheus将通过https方式与Alertmanager进行通信。
+    static_configs:                 static_configs:` 这个元素用于定义alertmanager的地址。
+    - targets:
+      - "1.2.3.4:9093"                     是你自己配置的alertmanager实例的地址和监听在的端口，Prometheus会发送报警到这些地址。
+      - "1.2.3.5:9093"
+      - "1.2.3.6:9093"
+
+
+
+
+
+
+
+
+
+
+      一、blackbox_exporter应用场景
+HTTP 测试： 定义 Request Header 信息、判断 Http status / Http Respones Header / Http Body 内容
+TCP 测试：   业务组件端口状态监听、应用层协议定义与监听
+ICMP 测试： 主机探活机制
+POST 测试： 接口联通性
+SSL证书过期时间
+
+二、blackbox_exporter安装
+复制代码
+# wget https://github.com/prometheus/blackbox_exporter/releases/download/v0.16.0/blackbox_exporter-0.16.0.linux-amd64.tar.gz
+
+# tar xf blackbox_exporter-0.16.0.linux-amd64.tar.gz -C /usr/local/
+# ln -s /usr/local/blackbox_exporter-0.16.0.linux-amd64/ /usr/local/blackbox_exporter
+
+# 使用systemd进行管理blackbox_exporter服务
+# vim /usr/lib/systemd/system/blackbox_exporter.service
+[Unit]
+Description=blackbox_exporter
+After=network.target
+
+[Service]
+User=root
+Type=simple
+ExecStart=/usr/local/blackbox_exporter/blackbox_exporter --config.file=/usr/local/blackbox_exporter/blackbox.yml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+# systemctl daemon-reload
+# systemctl start blackbox_exporter.service 
+# systemctl enable blackbox_exporter.service 
+复制代码
+三、配置prometheus采集数据
+复制代码
+# cd /usr/local/prometheus
+# vim prometheus.yml
+# my global config
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+scrape_configs:
+  - job_name: 'prometheus'
+
+    static_configs:
+    - targets: ['192.168.5.237:9090']
+
+  - job_name: 'node'
+    file_sd_configs:
+    - refresh_interval: 30s
+      files: 
+      - "/usr/local/prometheus/sd_config/node*.yml"
+
+  - job_name: 'docker'
+    static_configs:
+    - targets: ['192.168.5.85:8080']
+
+  - job_name: 'mysql'
+    static_configs:
+    - targets: ['192.168.5.237:9104']
+      labels:
+        app: zabbix-server-mysql
+
+# 网站监控
+  - job_name: 'http_status'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ['http://www.lzfn.com', 'wiki.lzfn.com']
+        labels:
+          instance: http_status
+          group: web
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: 192.168.5.85:9115
+
+# ping 检测
+  - job_name: 'ping_status'
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets: ['192.168.5.85']
+        labels:
+          instance: 'ping_status'
+          group: 'icmp'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: 192.168.5.85:9115
+
+# 端口监控
+  - job_name: 'port_status'
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ['192.168.5.85:80', '192.168.5.85:9000', '192.168.5.85:8080']
+        labels:
+          instance: 'port_status'
+          group: 'port'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: 192.168.5.85:9115
+
+# 检查配置文件并重启服务
+# ./promtool check config prometheus.yml 
+Checking prometheus.yml
+  SUCCESS: 0 rule files found
+
+# systemctl restart prometheus.service
